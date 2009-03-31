@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * This project is a Slideshow plugin for the jQuery JavaScript library. It is intended to offer
+ * a lightweight module to transform existing HTML content into animated slides for easy display
+ * on your website. If there are any questions, comments or suggestions concerning this project,
+ * please feel free to contact me at garth [at] guahanweb [dot] com.
+ *
+ * @author Garth Henson (Guahan Web)
+ * @version 0.1
+ */
 $.fn.gwSlideshow = function(options)
 {
 	// First, prime the style and variables we will need throughout
