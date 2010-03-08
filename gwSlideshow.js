@@ -34,9 +34,22 @@
 				shuffle : false
 			}, options || {});
 
+			// Setup listeners
 			self.listeners = {};
+			if (options.listeners || false)
+			{
+				for (var k in options.listeners)
+				{
+					self.addListener(k, options.listeners[k]);
+				}
+			}
+
 			self.setupContainer();
 			self.setupSlides();
+
+			// Setup some of the member variables we will need
+			self.current_index = self.settings.start;
+			self.timeout_id = null;
 
 			// Initialize the first slide, and start the rotation, shuffling if called for
 			if (self.settings.shuffle)
@@ -44,7 +57,8 @@
 				self.shuffle();
 			}
 			self.slides[self.settings.start].show();
-			self.showNext(self.settings.start);
+			self.play();
+			self.triggerEvent('load');
 		};
 
 		/**
@@ -98,6 +112,52 @@
 		};
 
 		/**
+		 * Sets the slideshow to a playing state and sets up the next transition
+		 *
+		 * @return void
+		 */
+		self.play = function (callback)
+		{
+			// Be sure we're not already playing
+			if (!self.is_playing)
+			{
+				self.triggerEvent('beforeplay');
+	
+				self.timeout_id = setTimeout(function ()
+				{
+					self.showNext(true);
+				}, self.settings.delay);
+				self.is_playing = true;
+			}
+	
+			if (callback || false)
+			{
+				callback();
+			}
+		};
+
+		/**
+		 * Cancels any current timeout for transitions and sets the slideshow to a stopped state
+		 *
+		 * @return void
+		 */
+		self.stop = function (callback)
+		{
+			// Be sure we're already playing
+			if (self.is_playing)
+			{
+				self.triggerEvent('beforestop');
+				clearTimeout(self.timeout_id);
+				self.is_playing = false;
+			}
+
+			if (callback || false)
+			{
+				callback();
+			}
+		};
+
+		/**
 		 * Shuffle the slide array
 		 *
 		 * @return void
@@ -112,35 +172,62 @@
 		/**
 		 * Shows the next (+1) slide in the array
 		 *
-		 * @param {int} num The key of the currently visible slide
+		 * @param {bool} internal Whether or not this was called internally (defaults to false)
 		 * @return void
 		 */
-		self.showNext = function (num)
+		self.showNext = function (internal)
 		{
-			var next = num + 1;
+			var next = self.current_index + 1;
 			if (next == self.slides.length)
 			{
 				next = 0;
 			}
 			
-			self.doRotation(num, next);
+			self.showSlide(next, internal);
 		};
 	
 		/**
 		 * Shows the previous (-1) slide in the array
 		 *
-		 * @param {int} num The key of the currently visible slide
+		 * @param {bool} internal Whether or not this was called internally (defaults to false)
 		 * @return void
 		 */
-		self.showPrev = function (num)
+		self.showPrev = function (internal)
 		{
-			var next = num - 1;
+			var next = self.current_index - 1;
 			if (next < 0)
 			{
-				next = self.slides.length;
+				next = self.slides.length - 1;
 			}
 			
-			self.doRotation(num, next);
+			self.showSlide(next, internal);
+		};
+
+		/**
+		 * Request to show a specific slide
+		 *
+		 * @param {int} num The index of the slide to show
+		 * @param {bool} internal Whether or not this was called internally (defaults to false)
+		 * @return void
+		 */
+		self.showSlide = function (num, internal)
+		{
+			// Resolve external calls
+			if (!(internal || false))
+			{
+				self.stop();
+			}
+
+			// Only transition if we are not currently in transition
+			if (!self.in_transition)
+			{
+				if (num < self.slides.length && num != self.current_index)
+				{
+					// We know it's a valid request, so execute it!
+					self.doRotation(self.slides.current_index, num);
+					self.current_index = num;
+				}
+			}
 		};
 	
 		/**
@@ -193,32 +280,42 @@
 			// Only attempt rotation if there is more than one slide
 			if (self.slides.length > 1)
 			{ 
-				setTimeout(function()
-				{
-					self.triggerEvent('beforerotate', {prev_slide : num1, curr_slide : num2});
+				self.triggerEvent('beforerotate', {prev_slide : num1, curr_slide : num2});
 
-					var callback = function()
+				// Begin transation
+				self.in_transition = true;
+
+				var callback = function()
+				{
+					// Transition is complete
+					self.in_transition = false;
+
+					// We only want to set the new transition if we're still playing
+					if (self.is_playing)
 					{
-						self.showNext(num2);
-					};
+						self.timeout_id = setTimeout(function ()
+						{
+							self.showNext(true);
+						}, self.settings.delay);
+					}
+				};
 					
-					if (self.settings.transition == 'fade')
+				if (self.settings.transition == 'fade')
+				{
+					self.doFade(num1, num2, function ()
 					{
-						self.doFade(num1, num2, function ()
-						{
-							callback();
-							self.triggerEvent('rotate', {prev_slide : num1, curr_slide : num2});
-						});
-					}
-					else if (self.settings.transition == 'slide')
+						callback();
+						self.triggerEvent('rotate', {prev_slide : num1, curr_slide : num2});
+					});
+				}
+				else if (self.settings.transition == 'slide')
+				{
+					self.doSlide(num2, function ()
 					{
-						self.doSlide(num2, function ()
-						{
-							callback();
-							self.triggerEvent('rotate', {prev_slide : num1, curr_slide : num2});
-						});
-					}
-				}, self.settings.delay);
+						callback();
+						self.triggerEvent('rotate', {prev_slide : num1, curr_slide : num2});
+					});
+				}
 			}
 		};
 
@@ -293,6 +390,12 @@
 							self.listeners[type][i](params.prev_slide, params.curr_slide, self);
 						}
 						break;
+
+					default:
+						for (var i = 0; i < self.listeners[type].length; i++)
+						{
+							self.listeners[type][i](self);
+						}
 				}
 			}
 		};
